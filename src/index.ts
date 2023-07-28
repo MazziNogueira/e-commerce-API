@@ -1,6 +1,9 @@
-console.log('hola, soy el TS arquibo')
-console.log('diga tu nombre')
+import { products, users } from "./db"
+import { Product, User } from "./types"
 
-const nombre = process.argv[2]
+const usersList: User[] = users
 
-console.log(`yo, la maquina, soy felix, y tu, humana es ${nombre}`)
+const productsList: Product[] = products
+
+console.log('usersList', usersList)
+console.log('productsList', productsList)

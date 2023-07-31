@@ -179,51 +179,133 @@ app.post('/products', (req: Request, res: Response) => {
 
 // DELETE User By Id
 app.delete('/users/:id', (req: Request, res: Response) => {
-    const id = req.params.id
+    try {
+        const id: string = req.params.id
 
-    const userToBeDeletedIndex = usersList.findIndex((user) => {
-        return user.id === id
-    })
+        const userToBeDeletedArray: User[] = usersList.filter((user: User) => {
+            return user.id === id
+        })
 
-    if (userToBeDeletedIndex >= 0) {
-        usersList.splice(userToBeDeletedIndex, 1)
+        if (userToBeDeletedArray.length === 0) {
+            res.statusCode = 404
+            throw new Error('Não há nenhum user cadastrado com essa "id".')
+        }
+
+        const userToBeDeletedIndex = usersList.findIndex((user) => {
+            return user.id === id
+        })
+
+        if (userToBeDeletedIndex >= 0) {
+            usersList.splice(userToBeDeletedIndex, 1)
+        }
+
+        res.status(200).send('User deletado com sucesso')
+
+    } catch (error) {
+        if (res.statusCode === 200) {
+            res.status(500)
+        }
+
+        if (error instanceof Error) {
+            res.send(error.message)
+        } else {
+            res.send("Erro inesperado")
+        }
     }
 
-    res.status(200).send('User deletado com sucesso')
 })
 
 // DELETE Product By Id
 app.delete('/products/:id', (req: Request, res: Response) => {
-    const id = req.params.id
+    try {
+        const id: string = req.params.id
 
-    const productToBeDeletedIndex = productsList.findIndex((product) => {
-        return product.id === id
-    })
+        const productToBeDeletedArray: Product[] = productsList.filter((product: Product) => {
+            return product.id === id
+        })
 
-    if (productToBeDeletedIndex >= 0) {
-        productsList.splice(productToBeDeletedIndex, 1)
+        if (productToBeDeletedArray.length === 0) {
+            res.statusCode = 404
+            throw new Error('Não há nenhum produto cadastrado com essa "id".')
+        }
+
+        const productToBeDeletedIndex = productsList.findIndex((product) => {
+            return product.id === id
+        })
+
+        if (productToBeDeletedIndex >= 0) {
+            productsList.splice(productToBeDeletedIndex, 1)
+        }
+
+        res.status(200).send('Produto deletado com sucesso')
+    } catch (error) {
+        if (res.statusCode === 200) {
+            res.status(500)
+        }
+
+        if (error instanceof Error) {
+            res.send(error.message)
+        } else {
+            res.send("Erro inesperado")
+        }
     }
 
-    res.status(200).send('Produto deletado com sucesso')
 })
 
 // EDIT Product By Id
 app.put('/products/:id', (req: Request, res: Response) => {
-    const idToEdit = req.params.id
+    try {
+        const idToEdit: string = req.params.id
 
-    const { id, name, price, description, imageUrl } = req.body
+        const { id, name, price, description, imageUrl } = req.body
 
-    const productToEdit = productsList.find((product) => {
-        return product.id === idToEdit
-    })
+        const productToEdit = productsList.find((product) => {
+            return product.id === idToEdit
+        })
 
-    if (productToEdit) {
-        productToEdit.id = id || productToEdit.id
-        productToEdit.name = name || productToEdit.name
-        productToEdit.price = price || productToEdit.price
-        productToEdit.description = description || productToEdit.description
-        productToEdit.imageUrl = imageUrl || productToEdit.imageUrl
+        if (!productToEdit) {
+            res.statusCode = 404
+            throw new Error('Ná nenhum produto cadastrado com essa "id".')
+        }
+
+        if (typeof name !== 'undefined' && typeof name !== 'string') {
+            res.statusCode = 406
+            throw new Error('"name" deve ser uma "string".')
+        }
+
+        if (typeof description !== 'undefined' && typeof description !== 'string') {
+            res.statusCode = 406
+            throw new Error('"description" deve ser uma "string".')
+        }
+
+        if (typeof imageUrl !== 'undefined' && typeof imageUrl !== 'string') {
+            res.statusCode = 406
+            throw new Error('"imageUrl" deve ser uma "string".')
+        }
+
+        if (typeof price !== 'undefined' && typeof price !== 'number') {
+            res.statusCode = 406
+            throw new Error('O dado "price" deve estar no formato "number".')
+        }
+
+        if (productToEdit) {
+            productToEdit.id = id || productToEdit.id
+            productToEdit.name = name || productToEdit.name
+            productToEdit.price = price || productToEdit.price
+            productToEdit.description = description || productToEdit.description
+            productToEdit.imageUrl = imageUrl || productToEdit.imageUrl
+        }
+
+        res.status(200).send('Atualização realizada com sucesso')
+    } catch (error) {
+        if (res.statusCode === 200) {
+            res.status(500)
+        }
+
+        if (error instanceof Error) {
+            res.send(error.message)
+        } else {
+            res.send("Erro inesperado")
+        }
     }
-
-    res.status(200).send('Atualização realizada com sucesso')
 })

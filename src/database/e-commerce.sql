@@ -26,8 +26,19 @@ CREATE TABLE
         buyer TEXT NOT NULL,
         total_price REAL NOT NULL,
         created_at TEXT NOT NULL,
-        FOREIGN KEY (buyer) REFERENCES users(id)
+        FOREIGN KEY (buyer) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE
     );
+
+CREATE TABLE
+    purchases_products (
+        purchase_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        FOREIGN KEY (purchase_id) REFERENCES purchases (id) ON UPDATE CASCADE ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products (id) ON UPDATE CASCADE ON DELETE CASCADE
+    );
+
+DROP TABLE purchases;
 
 -- CREATE USER
 
@@ -101,6 +112,16 @@ VALUES (
         '1690854106029'
     );
 
+-- INSERT Item to Purchases X Products
+
+INSERT INTO
+    purchases_products (
+        purchase_id,
+        product_id,
+        quantity
+    )
+VALUES ('pur001', 'p003', 3), ('pur001', 'p002', 2), ('pur002', 'p001', 5), ('pur002', 'p002', 1), ('pur003', 'p004', 8), ('pur003', 'p001', 3), ('pur004', 'p002', 4), ('pur004', 'p004', 2), ('pur005', 'p001', 3), ('pur005', 'p003', 1), ('pur006', 'p003', 4), ('pur006', 'p004', 2);
+
 -- READ
 
 -- GET All Users:
@@ -118,7 +139,7 @@ SELECT * FROM purchases;
 -- GET Purchase by Id
 
 SELECT
-    purchases.id,
+    purchases.id AS purchaseId,
     purchases.buyer,
     users.name,
     users.email,
@@ -130,6 +151,17 @@ FROM purchases
 -- GET All Products by Name:
 
 SELECT * FROM products WHERE name LIKE '%de%';
+
+-- GET Purchases X Products
+
+SELECT * FROM purchases_products;
+
+-- GET All Columns from purchases_products, purchases e products
+
+SELECT *
+FROM purchases_products
+    INNER JOIN purchases ON purchases_products.purchase_id = purchases.id
+    INNER JOIN products ON purchases_products.product_id = products.id;
 
 -- UPDATE
 

@@ -13,3 +13,15 @@ export type Product = {
     description: string,
     imageUrl: string
 }
+
+export type Purchase = {
+    id: string,
+    buyer: string,
+    totalPrice: number,
+    createdAt: string
+}
+
+export type ProductFromPurchase = {
+    id: string,
+    quantity: number
+}

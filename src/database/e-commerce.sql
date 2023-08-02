@@ -188,3 +188,5 @@ DELETE FROM users WHERE id = `${reqId}`;
 -- DELETE Product by Id
 
 DELETE FROM products WHERE id = `${reqId}`;
+
+SELECT price FROM products;

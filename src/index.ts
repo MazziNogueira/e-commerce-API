@@ -1,11 +1,9 @@
 import express, { Request, Response } from 'express'
 import cors from 'cors'
 
-import { products, users } from "./db"
-import { Product, User } from "./types"
+import { db } from './database/knex'
 
-const usersList: User[] = users
-const productsList: Product[] = products
+import { Product, Purchase, User } from "./types"
 
 const app = express()
 
@@ -18,13 +16,29 @@ app.listen(3003, () => {
 
 // FIRST ENDPOINT
 app.get('/ping', (req: Request, res: Response) => {
-    res.send('Pong, human (:')
+    try {
+        res.status(200).send({ message: 'Pong, human (:' })
+    } catch (error) {
+        if (req.statusCode === 200) {
+            res.status(500)
+        }
+
+        if (error instanceof Error) {
+            res.send(error.message)
+        } else {
+            res.send('Erro inesperado!')
+        }
+    }
+
 })
 
 // GET All Users
-app.get('/users', (req: Request, res: Response) => {
+app.get('/users', async (req: Request, res: Response) => {
     try {
-        res.status(200).send(usersList)
+        const result = await db.raw(`
+            SELECT * FROM users;
+        `)
+        res.status(200).send(result)
     } catch (error) {
         console.log(error)
 
@@ -43,7 +57,10 @@ app.get('/users', (req: Request, res: Response) => {
 // })
 
 // GET All Products By Name
-app.get('/products', (req: Request, res: Response) => {
+app.get('/products', async (req: Request, res: Response) => {
+    const productsFromDb: Product[] = await db.raw(`
+    SELECT * FROM products
+`)
     try {
         const productName = req.query.name as string
 
@@ -53,13 +70,18 @@ app.get('/products', (req: Request, res: Response) => {
                 throw new Error('O termo buscado deve ter pelo menos dois caracteres.')
             }
 
-            const result = productsList.filter((product) => {
+            const filteredProductsFromDB = productsFromDb.filter((product) => {
                 return product.name.toLowerCase().includes(productName.toLowerCase())
             })
 
-            res.status(200).send(result)
+            if (filteredProductsFromDB.length === 0) {
+                res.statusCode = 404
+                throw new Error('Não há nenhum produto com o termo buscado.')
+            }
+
+            res.status(200).send(filteredProductsFromDB)
         } else {
-            res.status(200).send(productsList)
+            res.status(200).send(productsFromDb)
         }
     } catch (error) {
         console.log(error)
@@ -71,13 +93,13 @@ app.get('/products', (req: Request, res: Response) => {
         if (error instanceof Error) {
             res.send(error.message)
         } else {
-            res.status(200).send(productsList)
+            res.status(200).send(productsFromDb)
         }
     }
 })
 
 // CREATE User
-app.post('/users', (req: Request, res: Response) => {
+app.post('/users', async (req: Request, res: Response) => {
     try {
         const { name, email, password } = req.body
 
@@ -91,8 +113,12 @@ app.post('/users', (req: Request, res: Response) => {
             throw new Error('Os dados "name", "email" e "password" devem estar no formato "string".')
         }
 
-        const checkEmail = usersList.filter((user) => {
-            return user.email === email
+        const usersFromDb: User[] = await db.raw(`
+            SELECT * FROM users
+        `)
+
+        const checkEmail = usersFromDb.filter((userFromDb) => {
+            return userFromDb.email === email
         })
 
         // filter retorna um array vazio caso não encontre nenhum user com email igual
@@ -109,9 +135,12 @@ app.post('/users', (req: Request, res: Response) => {
             createdAt: new Date().toISOString()
         }
 
-        usersList.push(newUser)
+        await db.raw(`
+            INSERT INTO users (id, name, email, password, created_at)
+            VALUES ('${newUser.id}', '${newUser.name}', '${newUser.email}', '${newUser.password}', '${newUser.createdAt}')
+        `)
 
-        res.status(201).send('Cadastro realizado com sucesso')
+        res.status(201).send({ message: 'Cadastro realizado com sucesso' })
     } catch (error) {
         console.log(error)
 
@@ -127,9 +156,8 @@ app.post('/users', (req: Request, res: Response) => {
     }
 })
 
-
 // CREATE Product
-app.post('/products', (req: Request, res: Response) => {
+app.post('/products', async (req: Request, res: Response) => {
     try {
         const { name, price, description, imageUrl } = req.body
 
@@ -156,10 +184,12 @@ app.post('/products', (req: Request, res: Response) => {
             imageUrl: imageUrl
         }
 
-        productsList.push(newProduct)
+        await db.raw(`
+            INSERT INTO products (id, name, price, description, image_url)
+            VALUES ('${newProduct.id}', '${newProduct.name}', '${newProduct.price}', '${newProduct.description}', '${newProduct.imageUrl}');
+        `)
 
-        res.status(201).send('Produto cadastrado com sucesso')
-
+        res.status(201).send({ message: 'Produto cadastrado com sucesso' })
     } catch (error) {
         console.log(error)
 
@@ -177,31 +207,99 @@ app.post('/products', (req: Request, res: Response) => {
 
 })
 
-// DELETE User By Id
-app.delete('/users/:id', (req: Request, res: Response) => {
+// CREATE Purchase
+app.post('/purchases', async (req: Request, res: Response) => {
     try {
-        const id: string = req.params.id
+        const { buyer, products } = req.body
 
-        const userToBeDeletedArray: User[] = usersList.filter((user: User) => {
-            return user.id === id
-        })
-
-        if (userToBeDeletedArray.length === 0) {
-            res.statusCode = 404
-            throw new Error('Não há nenhum user cadastrado com essa "id".')
+        if (!buyer || !products || products.length === 0) {
+            res.statusCode = 406
+            throw new Error('É obrigatório enviar "buyer" e "products" no corpo da requisição.')
         }
 
-        const userToBeDeletedIndex = usersList.findIndex((user) => {
-            return user.id === id
-        })
-
-        if (userToBeDeletedIndex >= 0) {
-            usersList.splice(userToBeDeletedIndex, 1)
+        if (typeof buyer !== 'string') {
+            res.statusCode = 406
+            throw new Error('O dado "buyer" deve estar no formato "string".')
         }
 
-        res.status(200).send('User deletado com sucesso')
+        const checkProductsArray = Array.isArray(products)
+        if (!checkProductsArray) {
+            res.statusCode = 406
+            throw new Error('O dado "produtos" deve ser um array.')
+        }
+
+        const usersFromDb: User[] = await db.raw(`
+            SELECT * FROM users
+        `)
+
+        // verificação de user cadastrado no db
+        const checkUserId = usersFromDb.filter((userFromDb) => {
+            return userFromDb.id === buyer
+        })
+
+        if (checkUserId.length === 0) {
+            res.statusCode = 406
+            throw new Error('Não há nenhum buyer cadastrado com a id informada.')
+        }
+
+        // verificação de produtos cadastrados no db
+        const productsFromDb: Product[] = await db.raw(`
+            SELECT * FROM products
+        `)
+
+        for (let product of products) {
+            const filteredProducts = productsFromDb.filter((productFromDb) => {
+                return productFromDb.id === product.id
+            })
+
+            if (filteredProducts.length === 0) {
+                res.statusCode = 406
+                throw new Error(`Não existe nenhum produto com a id "${product.id}".`)
+            }
+        }
+
+        // lógica de preço total
+        let totalPrice = 0
+
+        for (let product of products) {
+            const productFromDb = await db.raw(`
+                SELECT * FROM products
+                WHERE id = '${product.id}'
+            `)
+
+            const productPrice = productFromDb[0].price
+
+            const productTotalPrice = productPrice * product.quantity
+
+            totalPrice += productTotalPrice
+        }
+
+        console.log(totalPrice)
+
+        const newPurchase: Purchase = {
+            id: new Date().toISOString(),
+            buyer: buyer,
+            totalPrice: totalPrice,
+            createdAt: new Date().toISOString()
+        }
+
+        await db.raw(`
+            INSERT INTO purchases (id, buyer, total_price, created_at)
+            VALUES ('${newPurchase.id}', '${newPurchase.buyer}', '${newPurchase.totalPrice}', '${newPurchase.createdAt}')
+        `)
+
+        for (let product of products) {
+            await db.raw(`
+            INSERT INTO purchases_products (purchase_id, product_id, quantity)
+            VALUES ('${newPurchase.id}', '${product.id}', '${product.quantity}')
+        `)
+        }
+
+        res.status(201).send({ message: 'Pedido cadastrado com sucesso' })
 
     } catch (error) {
+        console.log(error)
+
         if (res.statusCode === 200) {
             res.status(500)
         }
@@ -209,58 +307,24 @@ app.delete('/users/:id', (req: Request, res: Response) => {
         if (error instanceof Error) {
             res.send(error.message)
         } else {
-            res.send("Erro inesperado")
+            res.send('Erro inesperado.')
         }
     }
-
-})
-
-// DELETE Product By Id
-app.delete('/products/:id', (req: Request, res: Response) => {
-    try {
-        const id: string = req.params.id
-
-        const productToBeDeletedArray: Product[] = productsList.filter((product: Product) => {
-            return product.id === id
-        })
-
-        if (productToBeDeletedArray.length === 0) {
-            res.statusCode = 404
-            throw new Error('Não há nenhum produto cadastrado com essa "id".')
-        }
-
-        const productToBeDeletedIndex = productsList.findIndex((product) => {
-            return product.id === id
-        })
-
-        if (productToBeDeletedIndex >= 0) {
-            productsList.splice(productToBeDeletedIndex, 1)
-        }
-
-        res.status(200).send('Produto deletado com sucesso')
-    } catch (error) {
-        if (res.statusCode === 200) {
-            res.status(500)
-        }
-
-        if (error instanceof Error) {
-            res.send(error.message)
-        } else {
-            res.send("Erro inesperado")
-        }
-    }
-
 })
 
 // EDIT Product By Id
-app.put('/products/:id', (req: Request, res: Response) => {
+app.put('/products/:id', async (req: Request, res: Response) => {
     try {
         const idToEdit: string = req.params.id
 
-        const { id, name, price, description, imageUrl } = req.body
+        const { name, price, description, imageUrl } = req.body
 
-        const productToEdit = productsList.find((product) => {
-            return product.id === idToEdit
+        const productsFromDb: Product[] = await db.raw(`
+            SELECT * FROM products;
+        `)
+
+        const productToEdit = productsFromDb.find((productFromDb) => {
+            return productFromDb.id === idToEdit
         })
 
         if (!productToEdit) {
@@ -288,12 +352,26 @@ app.put('/products/:id', (req: Request, res: Response) => {
             throw new Error('O dado "price" deve estar no formato "number".')
         }
 
+        const editedProduct: Product = {
+            id: idToEdit,
+            name: name || productToEdit.name,
+            price: price || productToEdit.price,
+            description: description || productToEdit.description,
+            imageUrl: imageUrl || productToEdit.imageUrl
+        }
+
+        // console.log('PRODUTO EDITADO', editedProduct)
+
         if (productToEdit) {
-            productToEdit.id = id || productToEdit.id
-            productToEdit.name = name || productToEdit.name
-            productToEdit.price = price || productToEdit.price
-            productToEdit.description = description || productToEdit.description
-            productToEdit.imageUrl = imageUrl || productToEdit.imageUrl
+            await db.raw(`
+                UPDATE products
+                SET
+                    name = '${editedProduct.name}',
+                    price = '${editedProduct.price}',
+                    description = '${editedProduct.description}',
+                    image_url = '${editedProduct.imageUrl}'
+                WHERE id = '${idToEdit}';
+            `)
         }
 
         res.status(200).send('Atualização realizada com sucesso')
@@ -306,6 +384,122 @@ app.put('/products/:id', (req: Request, res: Response) => {
             res.send(error.message)
         } else {
             res.send("Erro inesperado")
+        }
+    }
+})
+
+// DELETE User By Id
+app.delete('/users/:id', async (req: Request, res: Response) => {
+    try {
+        const id: string = req.params.id
+
+        const usersFromDb: User[] = await db.raw(`
+            SELECT * FROM users
+        `)
+
+        const userToBeDeletedArray: User[] = usersFromDb.filter((userFromDb) => {
+            return userFromDb.id === id
+        })
+
+        if (userToBeDeletedArray.length === 0) {
+            res.statusCode = 404
+            throw new Error('Não há nenhum user cadastrado com essa "id".')
+        }
+
+        await db.raw(`
+            DELETE FROM users
+            WHERE id = '${id}';
+        `)
+
+        res.status(200).send('User deletado com sucesso')
+
+    } catch (error) {
+        if (res.statusCode === 200) {
+            res.status(500)
+        }
+
+        if (error instanceof Error) {
+            res.send(error.message)
+        } else {
+            res.send("Erro inesperado")
+        }
+    }
+
+})
+
+// DELETE Product By Id
+app.delete('/products/:id', async (req: Request, res: Response) => {
+    try {
+        const id: string = req.params.id
+
+        const productsFromDb: Product[] = await db.raw(`
+            SELECT * FROM products
+        `)
+
+        const productToBeDeletedArray: Product[] = productsFromDb.filter((productFromDb: Product) => {
+            return productFromDb.id === id
+        })
+
+        if (productToBeDeletedArray.length === 0) {
+            res.statusCode = 404
+            throw new Error('Não há nenhum produto cadastrado com essa "id".')
+        }
+
+        await db.raw(`
+            DELETE FROM products
+            WHERE id = '${id}'
+        `)
+
+        res.status(200).send('Produto deletado com sucesso')
+    } catch (error) {
+        if (res.statusCode === 200) {
+            res.status(500)
+        }
+
+        if (error instanceof Error) {
+            res.send(error.message)
+        } else {
+            res.send("Erro inesperado")
+        }
+    }
+
+})
+
+// DELETE Purchase By Id
+app.delete('/purchases/:id', async (req: Request, res: Response) => {
+    try {
+        const id: string = req.params.id
+
+        const purchasesFromDb: Purchase[] = await db.raw(`
+            SELECT * FROM purchases
+        `)
+
+        const purchaseToBeDeletedArray = purchasesFromDb.filter((purchaseFromDb) => {
+            return purchaseFromDb.id === id
+        })
+
+        if (purchaseToBeDeletedArray.length === 0) {
+            res.statusCode = 404
+            throw new Error('Não há nenhum pedido com a id informada')
+        }
+
+        await db.raw(`
+            DELETE FROM purchases
+            WHERE id = '${id}';
+        `)
+
+        res.status(200).send({ message: 'Pedido cancelado com sucesso.' })
+    } catch (error) {
+        console.log(error)
+
+        if (res.statusCode === 200) {
+            res.status(500)
+        }
+
+        if (error instanceof Error) {
+            res.send(error.message)
+        } else {
+            res.send('Erro inesperado')
         }
     }
 })
